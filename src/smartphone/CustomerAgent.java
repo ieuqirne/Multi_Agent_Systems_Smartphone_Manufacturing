@@ -38,11 +38,10 @@ public class CustomerAgent extends Agent
 {
 	private Codec codec = new SLCodec();
 	private Ontology ontology = SmartphoneOntology.getInstance();
-	
+	private ArrayList<Behaviour> cyclicBehaviours = new ArrayList<>();
 	private AID tickerAgent;
-	private AID manufacturer;
-	private ArrayList<Long> openOrders = new ArrayList<>();
-	private int day = 0;
+	private AID manufacturerAgent;
+	private ArrayList<Long> workingOrders = new ArrayList<>();
 	
 	@Override
 	protected void setup()
@@ -54,8 +53,8 @@ public class CustomerAgent extends Agent
 		DFAgentDescription dfd = new DFAgentDescription();
 		dfd.setName(getAID());
 		ServiceDescription sd = new ServiceDescription();
-		sd.setType("customer");
-		sd.setName(getLocalName() + "-customer-agent");
+		sd.setType("Customer");
+		sd.setName(getLocalName() + "-Customer-agent");
 		dfd.addServices(sd);
 		try
 		{
@@ -69,14 +68,14 @@ public class CustomerAgent extends Agent
 		//get manufacturer
 		DFAgentDescription manufacturerTemplate = new DFAgentDescription();
 		ServiceDescription manufacSD = new ServiceDescription();
-		manufacSD.setType("manufacturer");
+		manufacSD.setType("Manufacturer");
 		manufacturerTemplate.addServices(manufacSD);
 		try
 		{
 			DFAgentDescription[] agent = DFService.search(this, manufacturerTemplate);
 			for(int i = 0; i<agent.length; i++)
 			{
-				manufacturer = agent[i].getName();
+				manufacturerAgent = agent[i].getName();
 			}
 		}
 		catch(FIPAException e)
@@ -112,65 +111,49 @@ public class CustomerAgent extends Agent
 		@Override
 		public void action()
 		{
-			MessageTemplate mt = MessageTemplate.or(MessageTemplate.MatchContent("new day"),
+			MessageTemplate mt = MessageTemplate.or(MessageTemplate.MatchContent("NewDay"),
 					MessageTemplate.MatchContent("terminate"));
-			ACLMessage msg = myAgent.receive(mt);
-			if(msg != null)
+			ACLMessage msgTicker = myAgent.receive(mt);
+			if(msgTicker != null)
 			{
-				if(tickerAgent == null)
-				{
-					tickerAgent = msg.getSender();
+				if(tickerAgent == null)	{
+					tickerAgent = msgTicker.getSender();
 				}
-				if(msg.getContent().equals("new day"))
-				{
-					day++;
-					/*
-					 * 
-					 * 
-					 * Add customer behaviours here
-					 * 
-					 * 
-					 */
-					myAgent.addBehaviour(new SendOrder());
-					myAgent.addBehaviour(new AcceptRefuseListener());
-					CyclicBehaviour rol = new ReceiveOrderListener();
-					myAgent.addBehaviour(rol);
-					ArrayList<Behaviour> cyclicBehaviours = new ArrayList<>();
-					cyclicBehaviours.add(rol);
-					myAgent.addBehaviour(new EndDayListener(myAgent, cyclicBehaviours));
+				if(msgTicker.getContent().equals("NewDay")){
+					cyclicBehaviours.clear();
 					
-				}
-				else
-				{
-					//termination message to end simulation
+					myAgent.addBehaviour(new GenerateOrder());
+					myAgent.addBehaviour(new ReceiveAnswerFromSupplier());
+					
+					CyclicBehaviour gOrders = new GetOrders();
+					myAgent.addBehaviour(gOrders);
+					cyclicBehaviours.add(gOrders);
+					
+					myAgent.addBehaviour(new EndDay(cyclicBehaviours,myAgent));
+					
+				}else{
 					myAgent.doDelete();
 				}
-			}
-			else
-			{
+			}else{
 				block();
 			}
 		}
 	}
-	
-	/*
-	 * 
-	 * 
-	 * Implement behaviours below
-	 * 
-	 * 
-	 */
-	
-	public class SendOrder extends OneShotBehaviour
+		
+	public class GenerateOrder extends OneShotBehaviour
 	{
-		private double phoneType = Math.random();
-		private double ramType = Math.random();
-		private double storageType = Math.random();
-		private Storage storage = new Storage();
+		private Order order = new Order();
 		private Screen screen = new Screen();
+		private Storage storage = new Storage();
+		private Memory memory = new Memory();
 		private Battery battery = new Battery();
-		private Memory ram = new Memory();
+		private Smartphone smartphone = new Smartphone();
+		private int quantity;
+		private int price;
+		private int deliveryDue;
+		private int penaltyDelay;
 		private Random rand = new Random(); 
+		
 		public void action()
 		{
 			
@@ -188,94 +171,78 @@ public class CustomerAgent extends Agent
 			 * 
 			 * */
 			//make phone to be purchased
-			Smartphone phone = new Smartphone();
-			if(phoneType < 0.5)
-			{
-				phone.setName("Phone");
-				
+			if (Math.random() < 0.5) {
 				screen.setSize(5);
 				screen.setItemID(1);
-				phone.setScreen(screen);
-				
 				battery.setSize(2000);
 				battery.setItemID(7);
-				phone.setBattery(battery);
-			}
-			else
-			{
-				phone.setName("Phablet");
-				
+				smartphone.setName("Phone");
+			} else {
 				screen.setSize(7);
 				screen.setItemID(2);
-				phone.setScreen(screen);
-				
 				battery.setSize(3000);
 				battery.setItemID(8);
-				phone.setBattery(battery);
+				smartphone.setName("Tablet");
 			}
-			
-			if(storageType < 0.5)
-			{
+			// Storage
+			if (Math.random() < 0.5) {
 				storage.setSize(64);
 				storage.setItemID(3);
-				phone.setStorage(storage);
-			}
-			else
-			{
+
+			} else {
 				storage.setSize(256);
 				storage.setItemID(4);
-				phone.setStorage(storage);
+			}
+
+			// Memory
+			if (Math.random() < 0.5) {
+				memory.setSize(4);
+				memory.setItemID(5);
+
+			} else {
+				memory.setSize(8);
+				memory.setItemID(6);
 			}
 			
-			if(ramType < 0.5)
-			{
-				ram.setSize(4);
-				ram.setItemID(5);
-				phone.setMemory(ram);
-			}
-			else
-			{
-				ram.setSize(8);
-				ram.setItemID(6);
-				phone.setMemory(ram);
-			}
 			
+			smartphone.setScreen(screen);
+			smartphone.setBattery(battery);
+			smartphone.setStorage(storage);
+			smartphone.setMemory(memory);
 			//Prepare message that will include order
 			
-			ACLMessage msg = new ACLMessage(ACLMessage.PROPOSE);
-			msg.addReceiver(manufacturer);
-			msg.setLanguage(codec.getName());
-			msg.setOntology(ontology.getName());
-			
-			//produce int variables for order content randomly
-			int dueDate = (int) Math.floor(1 + 10 * Math.random());
-			int quantity = (int) Math.floor(1 + 50 * Math.random());
-			int price = (int) Math.floor(100 + 500 * Math.random());
-			int lateFee = (int) (Math.floor(1 + 50 * Math.random()) * quantity) ;
-			
-			Order order = new Order();
+			ACLMessage msgOrderSupplier = new ACLMessage(ACLMessage.PROPOSE);
+			msgOrderSupplier.setLanguage(codec.getName());
+			msgOrderSupplier.setOntology(ontology.getName());
+			msgOrderSupplier.addReceiver(manufacturerAgent);
+
+						
+			// Get random generated order
+			quantity = (int) Math.floor(1 + 50 * Math.random());
+			price = (int) (quantity * Math.floor(100 + 500 * Math.random()));
+			deliveryDue = (int) Math.floor(1 + 10 * Math.random());
+			penaltyDelay = (int) (quantity * Math.floor(1 + 50 * Math.random()));
+
 			order.setPurchaser(myAgent.getAID());
-			order.setSmartphone(phone);
-			order.setDueDate(dueDate + day);
-			order.setDelayFee(lateFee);
-			order.setPrice(price);
+			order.setSmartphone(smartphone);
 			order.setQuantity(quantity);
+			order.setPrice(price);
+			order.setDueDate(deliveryDue);
+			order.setDelayFee(penaltyDelay);
 			order.setOrderID(Math.abs(rand.nextLong()));
+			System.out.println("Order--> Quantity: " + order.getQuantity() + ", Screen: " + screen.getSize() +"\", Storage: " + storage.getSize() + "Gb, Memory: " 
+											+ memory.getSize() + "Gb, Battery: " + battery.getSize() + "mAh, DelayFee: " + penaltyDelay +", Due Date: " + deliveryDue);
+						
+			Action orderToSupplier = new Action();
+			orderToSupplier.setAction(order);
+			orderToSupplier.setActor(manufacturerAgent);	
 			
-			Action myOrder = new Action();
-			myOrder.setAction(order);
-			myOrder.setActor(manufacturer);	
-			
-			try
-			{
-				getContentManager().fillContent(msg, myOrder);
-				send(msg);
-			}
-			catch (CodecException ce) 
-			{
+			try	{
+				getContentManager().fillContent(msgOrderSupplier, orderToSupplier);
+				send(msgOrderSupplier);
+			}catch (CodecException ce){
 				ce.printStackTrace();
-			}
-			catch (OntologyException oe) 
+			}catch (OntologyException oe) 
 			{
 				oe.printStackTrace();
 			} 
@@ -284,156 +251,120 @@ public class CustomerAgent extends Agent
 	}
 	
 	
-	public class AcceptRefuseListener extends OneShotBehaviour
-	{
+	public class ReceiveAnswerFromSupplier extends OneShotBehaviour{
 		@Override
-		public void action() 
-		{
-			MessageTemplate mt = MessageTemplate.MatchConversationId("order-reply");
-			ACLMessage reply = myAgent.receive(mt);
-			if(reply != null)
-			{
-				if(reply.getPerformative() == ACLMessage.ACCEPT_PROPOSAL)
-				{
-					try
-					{
+		public void action(){
+			MessageTemplate mt = MessageTemplate.MatchConversationId("ManufactureAnswerToCustomer");
+			ACLMessage answerFromSuppliers = myAgent.receive(mt);
+			if(answerFromSuppliers != null){
+				if(answerFromSuppliers.getPerformative() == ACLMessage.ACCEPT_PROPOSAL){
+					try	{
 						ContentElement ce = null;
 						
-						ce = getContentManager().extractContent(reply);
-						if(ce instanceof Action)
-						{
+						ce = getContentManager().extractContent(answerFromSuppliers);
+						if(ce instanceof Action){
 							Concept action = ((Action)ce).getAction();
-							if(action instanceof Order)
-							{
+							if(action instanceof Order){
 								Order order = (Order)action;
-								openOrders.add(order.getOrderID());
-								
+								workingOrders.add(order.getOrderID());	
 							}
 						}
-					}
-					catch (CodecException ce) 
-					{
+					}catch (CodecException ce){
 						ce.printStackTrace();
-					}
-					catch (OntologyException oe) 
-					{
+					}catch (OntologyException oe){
 						oe.printStackTrace();
 					}
-				}
-				else
-				{
+				}else{
 					return;
 				}
-			}
-			else
-			{
+			}else{
 				block();
 			}
-			
 		}
-		
 	}
 	
-	
-	public class ReceiveOrderListener extends CyclicBehaviour
+	public class GetOrders extends CyclicBehaviour
 	{
-
-		public void action() 
-		{
+		int orderAmount;
+		int orderQuantity;
+		int orderPrice;
+		
+		public void action(){
 			MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.CONFIRM);
-			ACLMessage msg = myAgent.receive(mt);
-			if(msg != null)
-			{
-				try
-				{
+			ACLMessage msgGetOrders = myAgent.receive(mt);
+			if(msgGetOrders != null)	{
+				try	{
 					ContentElement ce = null;
-					
-					ce = getContentManager().extractContent(msg);
-					if (ce instanceof Action)
-					{
+					ce = getContentManager().extractContent(msgGetOrders);
+					if (ce instanceof Action){
 						Concept action = ((Action)ce).getAction();
-						if(action instanceof Deliver)
-						{
+						if(action instanceof Deliver){
 							Deliver delivery = (Deliver)action;
 							
-							if(openOrders.contains(delivery.getOrder().getOrderID()))
-							{
-								ACLMessage payment = new ACLMessage(ACLMessage.INFORM);
-								payment.addReceiver(msg.getSender());
-								payment.setConversationId("Order payment");
+							if(workingOrders.contains(delivery.getOrder().getOrderID())){
+								ACLMessage msgPayment = new ACLMessage(ACLMessage.INFORM);
+								msgPayment.setConversationId("PaymentFromCustomerToManu");
+								msgPayment.addReceiver(msgGetOrders.getSender());
+
+								orderQuantity = delivery.getOrder().getQuantity();
+								orderPrice = delivery.getOrder().getPrice();
+								orderAmount = orderPrice * orderQuantity;
 								
-								int totalPrice = delivery.getOrder().getPrice() * delivery.getOrder().getQuantity();
+								msgPayment.setContent(Integer.toString(orderAmount));
 								
-								payment.setContent(Integer.toString(totalPrice));
-								
-								myAgent.send(payment);
+								myAgent.send(msgPayment);
 								System.out.println("Delivery to delete " + delivery.getOrder().getOrderID());
-								System.out.println("openOrders: " + openOrders);
-								openOrders.remove(delivery.getOrder().getOrderID());
-							}
-							else
-							{
-								ACLMessage failure = new ACLMessage(ACLMessage.FAILURE);
-								failure.addReceiver(msg.getSender());
-								failure.setConversationId("Order payment");
-								failure.setContent("Wrong order received");
-								
-								myAgent.send(failure);
+								System.out.println("workingOrders: " + workingOrders);
+								workingOrders.remove(delivery.getOrder().getOrderID());
+							}else{
+								ACLMessage msgWrong = new ACLMessage(ACLMessage.FAILURE);
+								msgWrong.setConversationId("PaymentFromCustomerToManu");
+								msgWrong.setContent("PaymentWrong");
+								msgWrong.addReceiver(msgGetOrders.getSender());
+
+								myAgent.send(msgWrong);
 							}
 						}
 					}
-				}
-				catch (CodecException ce) {
+				}catch (CodecException ce) {
 					ce.printStackTrace();
-				}
-				catch (OntologyException oe) {
+				}catch (OntologyException oe) {
 					oe.printStackTrace();
 				}
-			}
-			else
-			{
+			}else{
 				block();
 			}
 		}
-		
 	}
 	
 	
-	public class EndDayListener extends CyclicBehaviour
-	{
-		private List<Behaviour> toRemove;
+	public class EndDay extends CyclicBehaviour{
+		private List<Behaviour> cyclicB;
 		
-		public EndDayListener(Agent a, List<Behaviour> toRemove)
-		{
+		public EndDay(List<Behaviour> cyclicB, Agent a){
 			super(a);
-			this.toRemove = toRemove;
+			this.cyclicB = cyclicB;
 		}
 		
 		@Override
-		public void action()
-		{
+		public void action(){
 			MessageTemplate mt = MessageTemplate.MatchContent("done");
-			ACLMessage msg = myAgent.receive(mt);
-			if(msg != null)
-			{
-				if(msg.getSender().equals(manufacturer))
-				{
+			ACLMessage msgEndDay = myAgent.receive(mt);
+			if(msgEndDay != null)	{
+				if(msgEndDay.getSender().equals(manufacturerAgent)){
 					//we are finished
 					ACLMessage tick = new ACLMessage(ACLMessage.INFORM);
 					tick.setContent("done");
 					tick.addReceiver(tickerAgent);
 					myAgent.send(tick);
 					
-					//remove behaviours
-					for(Behaviour b : toRemove)
-					{
-						myAgent.removeBehaviour(b);
+					for(Behaviour behaviour : cyclicB){
+						myAgent.removeBehaviour(behaviour);
 					}
 					myAgent.removeBehaviour(this);
 				}
 			}
-			else
-			{
+			else{
 				block();
 			}
 		}

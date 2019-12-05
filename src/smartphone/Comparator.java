@@ -3,7 +3,7 @@ package smartphone;
 import smartphone_ontology.elements.*;
 
 
-public class ___Comparator {
+public class Comparator {
 		public Boolean phoneComp(Smartphone smartphone1, Smartphone smartphone2) {
 			
 			/*Screen screen = new Screen();

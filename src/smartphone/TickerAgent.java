@@ -18,25 +18,20 @@ public class TickerAgent extends Agent{
 public static final int NUM_DAYS = 100;
 	
 	@Override
-	protected void setup()
-	{
-		//add this agent to the yellow pages
+	protected void setup(){
 		DFAgentDescription dfd = new DFAgentDescription();
 		dfd.setName(getAID());
 		ServiceDescription sd = new ServiceDescription();
-		sd.setType("ticker-agent");
-		sd.setName(getLocalName() + "-ticker-agent");
+		sd.setType("Ticker-Agent");
+		sd.setName(getLocalName() + "-Ticker-Agent");
 		dfd.addServices(sd);
-		try
-		{
+		try	{
 			DFService.register(this, dfd);
-		}
-		catch (FIPAException e)
-		{
+		} catch (FIPAException e){
 			e.printStackTrace();
 		}
 		
-		//wait for other agents to start
+		//doWait is uses to wait for all the agent to start
 		doWait(15000);
 		addBehaviour(new SynchAgentsBehaviour(this));
 	}
@@ -44,144 +39,120 @@ public static final int NUM_DAYS = 100;
 	@Override
 	protected void takeDown()
 	{
-		//deregister this from the yellow pages
-		try
-		{
+		try{
 			DFService.deregister(this);
-		}
-		catch (FIPAException e)
-		{
+		}catch (FIPAException e){
 			e.printStackTrace();
 		}
 	}
 	
 	public class SynchAgentsBehaviour extends Behaviour
 	{
-		private int step = 0;
+		
 		private int numFinReceived = 0;
 		private int day = 0;
-		private ArrayList<AID> simulationAgents = new ArrayList<>();
+		private int caseVa = 0;
+		private ArrayList<AID> allAgents = new ArrayList<>();
 		
-		public SynchAgentsBehaviour(Agent a)
-		{
+		public SynchAgentsBehaviour(Agent a){
 			super(a);
 		}
 		
 		@Override
 		public void action()
 		{
-			switch(step)
-			{
-			case 0:
-				//find all agents using directory service
-				DFAgentDescription template1 = new DFAgentDescription();
-				ServiceDescription sd = new ServiceDescription();
-				sd.setType("customer");
-				template1.addServices(sd);
-				
-				DFAgentDescription template2 = new DFAgentDescription();
-				ServiceDescription sd2 = new ServiceDescription();
-				sd2.setType("manufacturer");
-				template2.addServices(sd2);
-				
-				DFAgentDescription template3 = new DFAgentDescription();
-				ServiceDescription sd3 = new ServiceDescription();
-				sd3.setType("supplier");
-				template3.addServices(sd3);
-				
-				try
-				{
-					DFAgentDescription[] agentsType1 = DFService.search(myAgent, template1);
-					for(int i=0; i < agentsType1.length; i++)
-					{
-						simulationAgents.add(agentsType1[i].getName());
+			switch(caseVa){
+				case 0:
+					allAgents.clear();
+					
+					DFAgentDescription template1 = new DFAgentDescription();
+					ServiceDescription sd = new ServiceDescription();
+					sd.setType("Customer");
+					template1.addServices(sd);
+					
+					DFAgentDescription template2 = new DFAgentDescription();
+					ServiceDescription sd2 = new ServiceDescription();
+					sd2.setType("Manufacturer");
+					template2.addServices(sd2);
+					
+					DFAgentDescription template3 = new DFAgentDescription();
+					ServiceDescription sd3 = new ServiceDescription();
+					sd3.setType("Supplier");
+					template3.addServices(sd3);
+					
+					try	{
+						DFAgentDescription[] agentsType1 = DFService.search(myAgent, template1);
+						for(int i=0; i < agentsType1.length; i++){
+							allAgents.add(agentsType1[i].getName());
+						}
+						DFAgentDescription[] agentsType2 = DFService.search(myAgent, template2);
+						for(int i=0; i < agentsType2.length; i++){
+							allAgents.add(agentsType2[i].getName());
+						}
+						DFAgentDescription[] agentsType3 = DFService.search(myAgent, template3);
+						for(int i=0; i < agentsType3.length; i++){
+							allAgents.add(agentsType3[i].getName());
+						}	
+					}catch(FIPAException e)	{
+						e.printStackTrace();
 					}
 					
-					
-					DFAgentDescription[] agentsType2 = DFService.search(myAgent, template2);
-					for(int i=0; i < agentsType2.length; i++)
-					{
-						simulationAgents.add(agentsType2[i].getName());
+					//send new day message to each agent
+					ACLMessage tick = new ACLMessage(ACLMessage.INFORM);
+					tick.setContent("NewDay");
+					for(AID id : allAgents){
+						tick.addReceiver(id);
 					}
 					
-					DFAgentDescription[] agentsType3 = DFService.search(myAgent, template3);
-					for(int i=0; i < agentsType3.length; i++)
-					{
-						simulationAgents.add(agentsType3[i].getName());
-					}
+					myAgent.send(tick);
+					caseVa++;
+					day++;
+					break;
 					
-				}
-				catch(FIPAException e)
-				{
-					e.printStackTrace();
-				}
-				
-				//send new day message to each agent
-				ACLMessage tick = new ACLMessage(ACLMessage.INFORM);
-				tick.setContent("new day");
-				for(AID id : simulationAgents)
-				{
-					tick.addReceiver(id);
-				}
-				myAgent.send(tick);
-				step++;
-				day++;
-				break;
-				
-				
-			case 1:
-				//wait to receive a "done" message from all agents
-				MessageTemplate mt = MessageTemplate.MatchContent("done");
-				ACLMessage msg = myAgent.receive(mt);
-				if(msg != null)
-				{
-					numFinReceived++;
-					if(numFinReceived >= simulationAgents.size())
-					{
-						step++;
+					
+				case 1:
+					//wait to receive a "done" message from all agents
+					MessageTemplate mt = MessageTemplate.MatchContent("done");
+					ACLMessage msg = myAgent.receive(mt);
+					if(msg != null){
+						numFinReceived++;
+						if(numFinReceived >= allAgents.size()){
+							caseVa++;
+						}
+					}else{
+						block();
 					}
-				}
-				else
-				{
-					block();
-				}
 			}
 		}
 		
 		@Override
-		public boolean done()
-		{
-			return step == 2;
+		public boolean done(){
+			return caseVa == 2;
 		}
 		
 		@Override
-		public void reset()
-		{
+		public void reset(){
 			super.reset();
-			step = 0;
-			simulationAgents.clear();
+			caseVa = 0;
+			//allAgents.clear();
 			numFinReceived = 0;
 		}
 		
 		@Override
-		public int onEnd()
-		{
+		public int onEnd(){
 			System.out.println("");
 			System.out.println("End of day " + day);
-			if(day == NUM_DAYS)
-			{
+			if(day == NUM_DAYS){
 				//send termination message to each agent
-				ACLMessage msg = new ACLMessage(ACLMessage.INFORM);
+				/*ACLMessage msg = new ACLMessage(ACLMessage.INFORM);
 				msg.setContent("terminate");
-				for(AID agent : simulationAgents)
+				for(AID agent : allAgents)
 				{
 					msg.addReceiver(agent);
 				}
-				myAgent.send(msg);
+				myAgent.send(msg);*/
 				myAgent.doDelete();
-			}
-			else
-			{
+			}else{
 				reset();
 				myAgent.addBehaviour(this);
 			}

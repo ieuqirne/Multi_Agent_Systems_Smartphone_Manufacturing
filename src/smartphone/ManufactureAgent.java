@@ -40,23 +40,25 @@ public class ManufactureAgent extends Agent
 	private Codec codec = new SLCodec();
 	private Ontology ontology = SmartphoneOntology.getInstance();
 	
-	private ArrayList<AID> customers = new ArrayList<>();
-	private ArrayList<AID> suppliers = new ArrayList<>();
-	private ArrayList<Order> openOrders = new ArrayList<>();//workingOrders
+	private ArrayList<AID> customersAgent = new ArrayList<>();
+	private ArrayList<AID> suppliersAgent = new ArrayList<>();
+	private ArrayList<Order> workingOrders = new ArrayList<>();//workingOrders
 	private ArrayList<Order> lateOrders = new ArrayList<>();
 	private ArrayList<Sell> openDeliveries = new ArrayList<>();
 	private HashMap<Item, Integer> toBuy = new HashMap<>();//compToOrderFromSupplier
-	private HashMap<Integer, Integer> stockList = new HashMap<>();//StockInWarehouse
+	private HashMap<Integer, Integer> warehouseStock = new HashMap<>();//StockInWarehouse
 	private Order currentOrder = new Order();
 	private AID tickerAgent;
 	private int day = 0;
 	private int ordersSent = 0;
-	
 	private int warehouseStorageCost = 5;
 	private int componentCost = 0; // 
 	private int orderPayment = 0;
 	private int totalProfit;
 	
+	/*private int [] smartphoneDayToAssembly = new int[101];
+	private Screen[] screen7ToBuy;
+	private ArrayList<Screen> screen5ToBuy = new ArrayList<>();*/
 
 
 	@Override 
@@ -69,8 +71,8 @@ public class ManufactureAgent extends Agent
 		DFAgentDescription dfd = new DFAgentDescription();
 		dfd.setName(getAID());
 		ServiceDescription sd = new ServiceDescription();
-		sd.setType("manufacturer");
-		sd.setName(getLocalName() + "-manufacturer-agent");
+		sd.setType("Manufacturer");
+		sd.setName(getLocalName() + "-Manufacturer-Agent");
 		dfd.addServices(sd);
 		try
 		{
@@ -81,12 +83,18 @@ public class ManufactureAgent extends Agent
 			e.printStackTrace();
 		}
 		
+		/*
+		for(int x = 1; x <= TickerAgent.NUM_DAYS; x++) {
+			smartphoneDayToAssembly[x] = 0;
+		}
+		*/
+		
+		
 		addBehaviour(new TickerWaiter(this));
 	}
 	
 	protected void takedown()
 	{
-		//Deregister from yellow pages
 		try
 		{
 			DFService.deregister(this);
@@ -107,41 +115,34 @@ public class ManufactureAgent extends Agent
 		@Override
 		public void action()
 		{
-			MessageTemplate mt = MessageTemplate.or(MessageTemplate.MatchContent("new day"),
+			MessageTemplate mt = MessageTemplate.or(MessageTemplate.MatchContent("NewDay"),
 					MessageTemplate.MatchContent("terminate"));
-			ACLMessage msg = myAgent.receive(mt);
-			if(msg != null)
+			ACLMessage msgTicker = myAgent.receive(mt);
+			if(msgTicker != null)
 			{
 				if(tickerAgent == null)
 				{
-					tickerAgent = msg.getSender();
+					tickerAgent = msgTicker.getSender();
 				}
-				if(msg.getContent().equals("new day"))
+				if(msgTicker.getContent().equals("NewDay"))
 				{
-					//day++;
-					/*
-					 * Add customer behaviours here
-					 */
-					System.out.println(msg.getSender() + "\nDay " + day + "| ");
-					//spawn new sequential for day's activity
+					System.out.println("\nDay " + day + "| ");
 					SequentialBehaviour dailyActivity = new SequentialBehaviour();
-					//sub-behaviours will execute in the order they are added
-					dailyActivity.addSubBehaviour(new FindAgents(myAgent));
-					dailyActivity.addSubBehaviour(new AcceptOrder(myAgent));
-					dailyActivity.addSubBehaviour(new QueryComponents());
-					dailyActivity.addSubBehaviour(new BuyComponents());
-					dailyActivity.addSubBehaviour(new ComponentOrderListener());
-					dailyActivity.addSubBehaviour(new GetDeliveries());
-					dailyActivity.addSubBehaviour(new CompleteOrder());
-					dailyActivity.addSubBehaviour(new PaymentListener());
-					dailyActivity.addSubBehaviour(new ProfitCalculator());
+					dailyActivity.addSubBehaviour(new FindCustomersAndSuppliers(myAgent));
+					dailyActivity.addSubBehaviour(new ReceiveCustomerOrders(myAgent));
+					dailyActivity.addSubBehaviour(new RequestComponentsSupplier());
+					dailyActivity.addSubBehaviour(new BuyComponentsSuppliers());
+					dailyActivity.addSubBehaviour(new GetComponentsFromSuppliers());
+					dailyActivity.addSubBehaviour(new GetDeliveriesFromSuppliers());
+					dailyActivity.addSubBehaviour(new AssemblySmartphones());
+					dailyActivity.addSubBehaviour(new GetPaymentsFromSuppliers());
+					dailyActivity.addSubBehaviour(new GetProfit());
 					dailyActivity.addSubBehaviour(new EndDay(myAgent));
 					
 					myAgent.addBehaviour(dailyActivity);
 				}
 				else
 				{
-					//termination message to end simulation
 					myAgent.doDelete();
 				}
 			}
@@ -153,9 +154,9 @@ public class ManufactureAgent extends Agent
 	}	
 	
 	
-	public class FindAgents extends OneShotBehaviour
+	public class FindCustomersAndSuppliers extends OneShotBehaviour
 	{
-		public FindAgents(Agent a)
+		public FindCustomersAndSuppliers(Agent a)
 		{
 			super(a);
 		}
@@ -165,30 +166,30 @@ public class ManufactureAgent extends Agent
 		{
 			DFAgentDescription customerTemplate = new DFAgentDescription();
 			ServiceDescription csd = new ServiceDescription();
-			csd.setType("customer");
+			csd.setType("Customer");
 			customerTemplate.addServices(csd);
 			
 			DFAgentDescription supplierTemplate = new DFAgentDescription();
 			ServiceDescription ssd = new ServiceDescription();
-			ssd.setType("supplier");
+			ssd.setType("Supplier");
 			supplierTemplate.addServices(ssd);
 			
 			try
 			{
-				customers.clear();
+				customersAgent.clear();
 				DFAgentDescription[] custAgent = DFService.search(myAgent, customerTemplate);
 				for(int i = 0; i<custAgent.length; i++)
 				{
-					customers.add(custAgent[i].getName());
+					customersAgent.add(custAgent[i].getName());
 				}
-				System.out.println("Number Supplier Agents: " + customers.size());
-				suppliers.clear();
+				//System.out.println("Number Supplier Agents: " + customersAgent.size());
+				suppliersAgent.clear();
 				DFAgentDescription[] supplierAgent = DFService.search(myAgent, supplierTemplate);
 				for(int i = 0; i<supplierAgent.length; i++)
 				{
-					suppliers.add(supplierAgent[i].getName());
+					suppliersAgent.add(supplierAgent[i].getName());
 				}
-				System.out.println("Number Supplier Agents: " + suppliers.size());
+				//System.out.println("Number Supplier Agents: " + suppliersAgent.size());
 			}
 			catch (FIPAException fe)
 			{
@@ -198,18 +199,18 @@ public class ManufactureAgent extends Agent
 	}
 	
 	/*
-	 * The AcceptOrder behaviour receives all order proposals from the customerAgents
+	 * The ReceiveCustomerOrders behaviour receives all order proposals from the customerAgents
 	 * it decides which to accept (based on highest price) and adds that order to the 
 	 * openOrder list. each customer is either sent a REFUSE or ACCEPT_PROPOSAL reply.
 	 */
-	public class AcceptOrder extends Behaviour
+	public class ReceiveCustomerOrders extends Behaviour
 	{
 
 		private int numOrders;
 		private Order bestOrder;
 		private ArrayList<Order> customersOrders = new ArrayList<>();
 		
-		public AcceptOrder(Agent a)
+		public ReceiveCustomerOrders(Agent a)
 		{
 			super(a);
 		}
@@ -217,6 +218,51 @@ public class ManufactureAgent extends Agent
 		@Override
 		public void action() 
 		{
+		/*	MessageTemplate mt2 = MessageTemplate.MatchPerformative(ACLMessage.PROPOSE);
+			ACLMessage order2 = myAgent.receive(mt2);
+			
+			if(order2 != null)
+			{
+				numOrders++;
+				try
+				{
+					ContentElement ce2 = null;
+					
+					ce2 = getContentManager().extractContent(order2);
+					if(ce2 instanceof Action)
+					{
+						Concept action = ((Action)ce2).getAction();
+						if(action instanceof Order)
+						{
+							Order custOrder = (Order)action;
+							customersOrders.add(custOrder);
+							if(bestOrder == null)
+							{
+								bestOrder = custOrder;
+							}
+							else if((custOrder.getQuantity()) < (bestOrder.getQuantity()))
+							{
+								bestOrder = custOrder;
+								
+							}
+						}
+					}
+					
+					
+				}catch (CodecException ce){
+					ce.printStackTrace();
+				}catch (OntologyException oe){
+					oe.printStackTrace();
+				}
+				
+			}
+				
+			*/
+			
+			
+			
+			
+			
 			MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.PROPOSE);
 			ACLMessage order = myAgent.receive(mt);
 			if(order != null)
@@ -261,9 +307,9 @@ public class ManufactureAgent extends Agent
 			}
 			
 			//Send replies to each customer
-			if(numOrders == customers.size())
+			if(numOrders == customersAgent.size())
 			{
-				openOrders.add(bestOrder);
+				workingOrders.add(bestOrder);
 				currentOrder = bestOrder;
 				Screen screen = bestOrder.getSmartphone().getScreen();
 				Memory ram = bestOrder.getSmartphone().getMemory();
@@ -315,11 +361,11 @@ public class ManufactureAgent extends Agent
 					if(customersOrders.get(i) == bestOrder)
 					{
 						ACLMessage reply = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
-						reply.addReceiver(customersOrders.get(i).getPurchaser());
-						reply.setConversationId("order-reply");
 						reply.setLanguage(codec.getName());
 						reply.setOntology(ontology.getName());
-						
+						reply.addReceiver(customersOrders.get(i).getPurchaser());
+						reply.setConversationId("ManufactureAnswerToCustomer");
+
 						Order ord = customersOrders.get(i);
 						
 						Action sendReply = new Action();
@@ -344,11 +390,11 @@ public class ManufactureAgent extends Agent
 					else
 					{
 						ACLMessage reply = new ACLMessage(ACLMessage.REFUSE);
-						reply.addReceiver(customersOrders.get(i).getPurchaser());
-						reply.setConversationId("order-reply");
 						reply.setLanguage(codec.getName());
 						reply.setOntology(ontology.getName());
-						
+						reply.addReceiver(customersOrders.get(i).getPurchaser());
+						reply.setConversationId("ManufactureAnswerToCustomer");
+
 						Order ord = customersOrders.get(i);
 						
 						Action sendReply = new Action();
@@ -377,13 +423,13 @@ public class ManufactureAgent extends Agent
 		@Override
 		public boolean done() 
 		{
-			return numOrders == customers.size();
+			return numOrders == customersAgent.size();
 		}
 		
 	}
 	
 	
-	public class QueryComponents extends Behaviour
+	public class RequestComponentsSupplier extends Behaviour
 	{
 		int sent = 0;
 		@Override
@@ -393,23 +439,23 @@ public class ManufactureAgent extends Agent
 			
 			for(Item key : toBuy.keySet())
 			{
-				ACLMessage msg = new ACLMessage(ACLMessage.QUERY_IF);
-				msg.setLanguage(codec.getName());
-				msg.setOntology(ontology.getName());
+				ACLMessage msgRequestCompSup = new ACLMessage(ACLMessage.QUERY_IF);
+				msgRequestCompSup.setLanguage(codec.getName());
+				msgRequestCompSup.setOntology(ontology.getName());
 				
-				Buy owns = new Buy();
-				owns.setItem(key);
+				Buy buy = new Buy();
+				buy.setItem(key);
 				
-				for(int i = 0; i < suppliers.size(); i++)
+				for(int i = 0; i < suppliersAgent.size(); i++)
 				{
-					msg.addReceiver(suppliers.get(i));
-					owns.setOwner(suppliers.get(i));
+					msgRequestCompSup.addReceiver(suppliersAgent.get(i));
+					buy.setOwner(suppliersAgent.get(i));
 				}
 				try 
 				{
 					// Let JADE convert from Java objects to string
-					getContentManager().fillContent(msg, owns);
-					send(msg);
+					getContentManager().fillContent(msgRequestCompSup, buy);
+					send(msgRequestCompSup);
 					sent++;
 				}
 				catch (CodecException ce) {
@@ -432,7 +478,7 @@ public class ManufactureAgent extends Agent
 	}
 	
 	
-	public class BuyComponents extends Behaviour
+	public class BuyComponentsSuppliers extends Behaviour
 	{
 		int noReplies = 0;
 		
@@ -440,11 +486,11 @@ public class ManufactureAgent extends Agent
 		{
 			MessageTemplate mt = MessageTemplate.or(MessageTemplate.MatchPerformative(ACLMessage.CFP),
 					MessageTemplate.MatchPerformative(ACLMessage.REFUSE));
-			ACLMessage msg = myAgent.receive(mt);
-			if(msg!=null)
+			ACLMessage msgBuyComSupp = myAgent.receive(mt);
+			if(msgBuyComSupp!=null)
 			{
 				noReplies++;
-				if(msg.getPerformative() == ACLMessage.CFP)
+				if(msgBuyComSupp.getPerformative() == ACLMessage.CFP)
 				{
 
 
@@ -452,76 +498,77 @@ public class ManufactureAgent extends Agent
 					{
 						ContentElement ce = null;
 
-						ce = getContentManager().extractContent(msg);
+						ce = getContentManager().extractContent(msgBuyComSupp);
 						if(ce instanceof Buy)
 						{
-							Buy owns = (Buy) ce;
+							Buy buy = (Buy) ce;
 							
 							//if the component is a screen or a battery supplier 1 will be supplier
-							if(owns.getItem().getItemID() == 1 || owns.getItem().getItemID() == 2 || owns.getItem().getItemID() == 7 || owns.getItem().getItemID() == 8)
+							if(buy.getItem().getItemID() <=2 || buy.getItem().getItemID() >= 7 )
 							{
-								ACLMessage buy = new ACLMessage(ACLMessage.PROPOSE);
-								buy.addReceiver(owns.getOwner());
-								buy.setLanguage(codec.getName());
-								buy.setOntology(ontology.getName());
-								
+								ACLMessage msgBuyCompSupp1 = new ACLMessage(ACLMessage.PROPOSE);
+								msgBuyCompSupp1.setLanguage(codec.getName());
+								msgBuyCompSupp1.setOntology(ontology.getName());
+								msgBuyCompSupp1.addReceiver(buy.getOwner());
+
 								Sell sell = new Sell();
 								sell.setBuyer(getAID());
-								sell.setItem(owns.getItem());
+								sell.setItem(buy.getItem());
 								sell.setQuantity(currentOrder.getQuantity());
 								
 								Action myOrder = new Action();
 								myOrder.setAction(sell);
-								myOrder.setActor(owns.getOwner());
+								myOrder.setActor(buy.getOwner());
 								
 
-								getContentManager().fillContent(buy, myOrder);
-								send(buy);
+								getContentManager().fillContent(msgBuyCompSupp1, myOrder);
+								send(msgBuyCompSupp1);
 
 	
 							}
 							//if the due date is in 4 or more days use supplier 2
-							else if(owns.getShipmentSpeed() == 4 && ((currentOrder.getDueDate() - day) >= 4))
+							else if(buy.getShipmentSpeed() == 4 && ((currentOrder.getDueDate() - day) >= 4))
 							{
-								ACLMessage buy = new ACLMessage(ACLMessage.PROPOSE);
-								buy.addReceiver(owns.getOwner());
-								buy.setLanguage(codec.getName());
-								buy.setOntology(ontology.getName());
+								ACLMessage msgBuyCompSupp2 = new ACLMessage(ACLMessage.PROPOSE);
+								msgBuyCompSupp2.setLanguage(codec.getName());
+								msgBuyCompSupp2.setOntology(ontology.getName());
+								msgBuyCompSupp2.addReceiver(buy.getOwner());
+
 								
 								Sell sell = new Sell();
 								sell.setBuyer(getAID());
-								sell.setItem(owns.getItem());
+								sell.setItem(buy.getItem());
 								sell.setQuantity(currentOrder.getQuantity());
 								
 								Action myOrder = new Action();
 								myOrder.setAction(sell);
-								myOrder.setActor(owns.getOwner());
+								myOrder.setActor(buy.getOwner());
 								
 
-								getContentManager().fillContent(buy, myOrder);
-								send(buy);
+								getContentManager().fillContent(msgBuyCompSupp2, myOrder);
+								send(msgBuyCompSupp2);
 
 							}
 							//if the due date is in less than 4 days use supplier 1
-							else if(owns.getShipmentSpeed() == 1 && ((currentOrder.getDueDate() - day) < 4))
+							else if(buy.getShipmentSpeed() == 1 && ((currentOrder.getDueDate() - day) < 4))
 							{
-								ACLMessage buy = new ACLMessage(ACLMessage.PROPOSE);
-								buy.addReceiver(owns.getOwner());
-								buy.setLanguage(codec.getName());
-								buy.setOntology(ontology.getName());
+								ACLMessage msgBuyCompSupp1 = new ACLMessage(ACLMessage.PROPOSE);
+								msgBuyCompSupp1.addReceiver(buy.getOwner());
+								msgBuyCompSupp1.setLanguage(codec.getName());
+								msgBuyCompSupp1.setOntology(ontology.getName());
 								
 								Sell sell = new Sell();
 								sell.setBuyer(getAID());
-								sell.setItem(owns.getItem());
+								sell.setItem(buy.getItem());
 								sell.setQuantity(currentOrder.getQuantity());
 								
 								Action myOrder = new Action();
 								myOrder.setAction(sell);
-								myOrder.setActor(owns.getOwner());
+								myOrder.setActor(buy.getOwner());
 								
 							
-								getContentManager().fillContent(buy, myOrder);
-								send(buy);
+								getContentManager().fillContent(msgBuyCompSupp1, myOrder);
+								send(msgBuyCompSupp1);
 								
 							}
 							
@@ -550,25 +597,25 @@ public class ManufactureAgent extends Agent
 	}
 	
 	
-	public class ComponentOrderListener extends Behaviour
+	public class GetComponentsFromSuppliers extends Behaviour
 	{
 		int noReplies = 0;
 		public void action()
 		{
 			MessageTemplate mt = MessageTemplate.or(MessageTemplate.MatchPerformative(ACLMessage.INFORM),
 					MessageTemplate.MatchPerformative(ACLMessage.FAILURE));
-			ACLMessage msg = myAgent.receive(mt);
+			ACLMessage msgGetCompSup = myAgent.receive(mt);
 			
-			if(msg != null)
+			if(msgGetCompSup != null)
 			{
 				noReplies++;
-				if(msg.getPerformative() == ACLMessage.INFORM)
+				if(msgGetCompSup.getPerformative() == ACLMessage.INFORM)
 				{
 					try
 					{
 						ContentElement ce = null;
 						
-						ce = getContentManager().extractContent(msg);
+						ce = getContentManager().extractContent(msgGetCompSup);
 						if(ce instanceof Action)
 						{
 							Concept action = ((Action)ce).getAction();
@@ -579,7 +626,7 @@ public class ManufactureAgent extends Agent
 								openDeliveries.add(order);
 								componentCost += order.getPrice();
 								
-								System.out.println("Components purchased! " + currentOrder.getQuantity() + " x " + order.getItem().getClass().getName() + " purchased from " + msg.getSender().getName());
+								System.out.println("Components purchased! " + currentOrder.getQuantity() + " x " + order.getItem().getClass().getName() + " purchased from " + msgGetCompSup.getSender().getName());
 								System.out.println("Cost: " + order.getPrice());
 							}
 						}
@@ -613,7 +660,7 @@ public class ManufactureAgent extends Agent
 	}
 	
 	
-	public class GetDeliveries extends OneShotBehaviour
+	public class GetDeliveriesFromSuppliers extends OneShotBehaviour
 	{
 
 		public void action() 
@@ -624,42 +671,42 @@ public class ManufactureAgent extends Agent
 				{
 					if(order.getDeliveryDate() == day)
 					{
-						if(stockList.containsKey(order.getItem().getItemID()))
+						if(warehouseStock.containsKey(order.getItem().getItemID()))
 						{
-							int quantity = stockList.get(order.getItem().getItemID());
-							stockList.put(order.getItem().getItemID(), quantity + order.getQuantity());
+							int quantity = warehouseStock.get(order.getItem().getItemID());
+							warehouseStock.put(order.getItem().getItemID(), quantity + order.getQuantity());
 							System.out.println("Order of " + order.getQuantity() + " x " + order.getItem() + " added to Stocklist");
 						}
 						else
 						{
-							stockList.put(order.getItem().getItemID(), order.getQuantity());
+							warehouseStock.put(order.getItem().getItemID(), order.getQuantity());
 							System.out.println("Order of " + order.getQuantity() + " x " + order.getItem() + " added to Stocklist");
 						}
 					}
 				}
 			}
-			//System.out.println(stockList.keySet());
-			//System.out.println(stockList.values());
+			//System.out.println(warehouseStock.keySet());
+			//System.out.println(warehouseStock.values());
 			System.out.println("");
 		}
 		
 	}
 	
 	
-	public class CompleteOrder extends OneShotBehaviour
+	public class AssemblySmartphones extends OneShotBehaviour
 	{
-		int dailyLimit = 50;
+		int assemblyMax = 50;
 		public void action() 
 		{
-			if(openOrders.isEmpty() == false)
+			if(workingOrders.isEmpty() == false)
 			{
-				for(int i = 0; i < openOrders.size(); i++)
+				for(int i = 0; i < workingOrders.size(); i++)
 				{
-					Order o = openOrders.get(i);
+					Order o = workingOrders.get(i);
 					if(o.getDueDate() < day)
 					{
 						lateOrders.add(o);
-						openOrders.remove(o);
+						workingOrders.remove(o);
 					}
 				}
 			}
@@ -675,33 +722,25 @@ public class ManufactureAgent extends Agent
 						int ram = o.getSmartphone().getMemory().getItemID();
 						int storage = o.getSmartphone().getStorage().getItemID();
 						
-						if(o.getQuantity() < dailyLimit)
+						if(o.getQuantity() < assemblyMax)
 						{
-							if(stockList.containsKey(screen) && stockList.containsKey(storage) && stockList.containsKey(ram) && stockList.containsKey(storage))
+							if(warehouseStock.containsKey(screen) && warehouseStock.containsKey(storage) && warehouseStock.containsKey(ram) && warehouseStock.containsKey(storage))
 							{
-								System.out.println("Stocklist: " + stockList);
-								System.out.println("Stocklist Screen: " + stockList.get(screen));
-								System.out.println("Quantity Order: " + o.getQuantity());
-								System.out.println(" battery id: " + battery);
-								System.out.println("Stocklist battery: " + stockList.get(battery));
-								System.out.println("Stocklist ram: " + stockList.get(ram));
-								System.out.println("Stocklist storage: " + stockList.get(storage));
-		
-								
-								if(stockList.get(screen) >= o.getQuantity() && stockList.get(battery) >= o.getQuantity()
-										&& stockList.get(ram) >= o.getQuantity() && stockList.get(storage) >= o.getQuantity())
+								if(warehouseStock.get(screen) >= o.getQuantity() && warehouseStock.get(battery) >= o.getQuantity()
+										&& warehouseStock.get(ram) >= o.getQuantity() && warehouseStock.get(storage) >= o.getQuantity())
 								{
 									//assemble phone order
-									dailyLimit -= o.getQuantity();
-									stockList.put(screen, (stockList.get(screen) - o.getQuantity()));
-									stockList.put(battery, (stockList.get(battery) - o.getQuantity()));
-									stockList.put(ram, (stockList.get(ram) - o.getQuantity()));
-									stockList.put(storage, (stockList.get(storage) - o.getQuantity()));
+									assemblyMax -= o.getQuantity();
+									warehouseStock.put(screen, (warehouseStock.get(screen) - o.getQuantity()));
+									warehouseStock.put(battery, (warehouseStock.get(battery) - o.getQuantity()));
+									warehouseStock.put(ram, (warehouseStock.get(ram) - o.getQuantity()));
+									warehouseStock.put(storage, (warehouseStock.get(storage) - o.getQuantity()));
 
-									ACLMessage msg = new ACLMessage(ACLMessage.CONFIRM);
-									msg.addReceiver(o.getPurchaser());
-									msg.setLanguage(codec.getName());
-									msg.setOntology(ontology.getName());
+									ACLMessage msgGetCompSup = new ACLMessage(ACLMessage.CONFIRM);
+									msgGetCompSup.setLanguage(codec.getName());
+									msgGetCompSup.setOntology(ontology.getName());
+									msgGetCompSup.addReceiver(o.getPurchaser());
+
 									
 									Deliver deliver = new Deliver();
 									deliver.setOrder(o);
@@ -710,8 +749,8 @@ public class ManufactureAgent extends Agent
 									myDelivery.setAction(deliver);
 									myDelivery.setActor(getAID());
 									
-									getContentManager().fillContent(msg, myDelivery);
-									send(msg);
+									getContentManager().fillContent(msgGetCompSup, myDelivery);
+									send(msgGetCompSup);
 									
 									ordersSent++;
 									lateOrders.remove(o);
@@ -723,43 +762,45 @@ public class ManufactureAgent extends Agent
 					}
 				}
 				
-				else if(openOrders.isEmpty() == false)
+				else if(workingOrders.isEmpty() == false)
 				{
-					for(int i = 0; i < openOrders.size(); i++)
+					for(int i = 0; i < workingOrders.size(); i++)
 					{
-						Order o = openOrders.get(i);
+						Order o = workingOrders.get(i);
 						int screen = o.getSmartphone().getScreen().getItemID();
 						int battery = o.getSmartphone().getBattery().getItemID();
 						int ram = o.getSmartphone().getMemory().getItemID();
 						int storage = o.getSmartphone().getStorage().getItemID();
 						
-						if(o.getQuantity() < dailyLimit)
+						if(o.getQuantity() < assemblyMax)
 						{
-							if(stockList.containsKey(screen) && stockList.containsKey(storage) && stockList.containsKey(ram) && stockList.containsKey(storage))
+							if(warehouseStock.containsKey(screen) && warehouseStock.containsKey(storage) && warehouseStock.containsKey(ram) && warehouseStock.containsKey(storage))
 							{
-								System.out.println("Stocklist: " + stockList);
-								System.out.println("Stocklist Screen: " + stockList.get(screen));
+								/*
+								System.warehouseStockln("Stocklist: " + warehouseStock);
+								System.out.println("Stocklist Screen: " + warehouseStock.get(screen));
 								System.out.println("Quantity Order: " + o.getQuantity());
 								System.out.println(" batteryID: " + battery);
-								System.out.println("Stocklist battery: " + stockList.get(battery));
-								System.out.println("Stocklist ram: " + stockList.get(ram));
-								System.out.println("Stocklist storage: " + stockList.get(storage));
+								System.out.println("Stocklist battery: " + warehouseStock.get(battery));
+								System.out.println("Stocklist ram: " + warehouseStock.get(ram));
+								System.out.println("Stocklist storage: " + warehouseStock.get(storage));
 		
-								
-								if(stockList.get(screen) >= o.getQuantity() && stockList.get(battery) >= o.getQuantity()
-										&& stockList.get(ram) >= o.getQuantity() && stockList.get(storage) >= o.getQuantity())
+								*/
+								if(warehouseStock.get(screen) >= o.getQuantity() && warehouseStock.get(battery) >= o.getQuantity()
+										&& warehouseStock.get(ram) >= o.getQuantity() && warehouseStock.get(storage) >= o.getQuantity())
 								{
 									//assemble phone order
-									dailyLimit -= o.getQuantity();
-									stockList.put(screen, (stockList.get(screen) - o.getQuantity()));
-									stockList.put(battery, (stockList.get(battery) - o.getQuantity()));
-									stockList.put(ram, (stockList.get(ram) - o.getQuantity()));
-									stockList.put(storage, (stockList.get(storage) - o.getQuantity()));
+									assemblyMax -= o.getQuantity();
+									warehouseStock.put(screen, (warehouseStock.get(screen) - o.getQuantity()));
+									warehouseStock.put(battery, (warehouseStock.get(battery) - o.getQuantity()));
+									warehouseStock.put(ram, (warehouseStock.get(ram) - o.getQuantity()));
+									warehouseStock.put(storage, (warehouseStock.get(storage) - o.getQuantity()));
 
-									ACLMessage msg = new ACLMessage(ACLMessage.CONFIRM);
-									msg.addReceiver(o.getPurchaser());
-									msg.setLanguage(codec.getName());
-									msg.setOntology(ontology.getName());
+									ACLMessage msgGetCompSup = new ACLMessage(ACLMessage.CONFIRM);
+									msgGetCompSup.setLanguage(codec.getName());
+									msgGetCompSup.setOntology(ontology.getName());
+									msgGetCompSup.addReceiver(o.getPurchaser());
+
 
 									Deliver deliver = new Deliver();
 									deliver.setOrder(o);
@@ -768,11 +809,11 @@ public class ManufactureAgent extends Agent
 									myDelivery.setAction(deliver);
 									myDelivery.setActor(getAID());
 									
-									getContentManager().fillContent(msg, myDelivery);
-									send(msg);
+									getContentManager().fillContent(msgGetCompSup, myDelivery);
+									send(msgGetCompSup);
 									
 									ordersSent++;
-									openOrders.remove(o);
+									workingOrders.remove(o);
 									System.out.println("Order for " + o.getQuantity() + " x " + o.getSmartphone().getName() + "s sent to " + o.getPurchaser().getName());
 
 								}
@@ -792,13 +833,13 @@ public class ManufactureAgent extends Agent
 	}
 	
 	
-	public class PaymentListener extends Behaviour
+	public class GetPaymentsFromSuppliers extends Behaviour
 	{
 		int msgReceived = 0;
 		
 		public void action() 
 		{
-			MessageTemplate mt = MessageTemplate.MatchConversationId("Order payment");
+			MessageTemplate mt = MessageTemplate.MatchConversationId("PaymentFromCustomerToManu");
 			ACLMessage order = myAgent.receive(mt);
 			if(order!=null)
 			{
@@ -829,7 +870,7 @@ public class ManufactureAgent extends Agent
 	}
 	
 	
-	public class ProfitCalculator extends OneShotBehaviour
+	public class GetProfit extends OneShotBehaviour
 	{
 
 		public void action() 
@@ -854,13 +895,13 @@ public class ManufactureAgent extends Agent
 				System.out.println("Total cost of late fees: " + lateFees);
 			}
 			
-			if(stockList.isEmpty())
+			if(warehouseStock.isEmpty())
 			{
 				System.out.println("Total cost of warehouse storage: " + warehouseCost);
 			}
 			else
 			{
-				for(Integer v : stockList.values())
+				for(Integer v : warehouseStock.values())
 				{
 					warehouseCost += (v * warehouseStorageCost);
 				}
@@ -890,10 +931,10 @@ public class ManufactureAgent extends Agent
 		@Override
 		public void action()
 		{
-			ACLMessage msg = new ACLMessage(ACLMessage.INFORM);
-			msg.addReceiver(tickerAgent);
-			msg.setContent("done");
-			myAgent.send(msg);
+			ACLMessage msgEndDay = new ACLMessage(ACLMessage.INFORM);
+			msgEndDay.addReceiver(tickerAgent);
+			msgEndDay.setContent("done");
+			myAgent.send(msgEndDay);
 			
 			System.out.println("");
 			
@@ -904,10 +945,10 @@ public class ManufactureAgent extends Agent
 
 			
 			
-			//Send messages to all suppliers and customers
+			//Send messages to all suppliersAgent and customersAgent
 			ACLMessage customerDone = new ACLMessage(ACLMessage.INFORM);
 			customerDone.setContent("done");
-			for(AID customer : customers)
+			for(AID customer : customersAgent)
 			{
 				customerDone.addReceiver(customer);
 			}
@@ -915,7 +956,7 @@ public class ManufactureAgent extends Agent
 			
 			ACLMessage supplierDone = new ACLMessage(ACLMessage.INFORM);
 			supplierDone.setContent("done");
-			for(AID supplier : suppliers)
+			for(AID supplier : suppliersAgent)
 			{
 				supplierDone.addReceiver(supplier);
 			}

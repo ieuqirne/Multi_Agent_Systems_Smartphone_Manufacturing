@@ -37,17 +37,16 @@ public class SupplierAgent extends Agent
 {
 	private Codec codec = new SLCodec();
 	private Ontology ontology = SmartphoneOntology.getInstance();
-	
+	//private Comparator comp = new Comparator();
 	private AID tickerAgent;
-	private AID manufacturer;
-	
-	private HashMap<Integer, Integer> itemsForSale = new HashMap<>();
-	private int deliverySpeed = 0;
-	private int day = 0;
+	private AID manufacturerAgent;
+	private ArrayList<Behaviour> cyclicBehaviours = new ArrayList<>();
+	private HashMap<Integer, Integer> supplierStock = new HashMap<>();
+	private int shipmentSpeed = 0;
+	private int day = 1;
 	
 	@Override
-	protected void setup()
-	{
+	protected void setup(){
 		getContentManager().registerLanguage(codec);
 		getContentManager().registerOntology(ontology);
 		
@@ -55,102 +54,76 @@ public class SupplierAgent extends Agent
 		DFAgentDescription dfd = new DFAgentDescription();
 		dfd.setName(getAID());
 		ServiceDescription sd = new ServiceDescription();
-		sd.setType("supplier");
-		sd.setName(getLocalName() + "-supplier-agent");
+		sd.setType("Supplier");
+		sd.setName(getLocalName() + "-Supplier-Agent");
 		dfd.addServices(sd);
-		try
-		{
+		try{
 			DFService.register(this, dfd);
-		}
-		catch (FIPAException e)
-		{
+		}catch (FIPAException e){
 			e.printStackTrace();
 		}
 		
-		//get manufacturer
+		
 		DFAgentDescription manufacturerTemplate = new DFAgentDescription();
 		ServiceDescription manufacSD = new ServiceDescription();
-		manufacSD.setType("manufacturer");
+		manufacSD.setType("Manufacturer");
 		manufacturerTemplate.addServices(manufacSD);
-		try
-		{
+		try{
 			DFAgentDescription[] agent = DFService.search(this, manufacturerTemplate);
-			for(int i = 0; i<agent.length; i++)
-			{
-				manufacturer = agent[i].getName();
-				System.out.println("Manufacture Agent: " + manufacturer);
+			for(int i = 0; i<agent.length; i++){
+				manufacturerAgent = agent[i].getName();
+				//System.out.println("Manufacture Agent: " + manufacturerAgent);
 			}
-		}
-		catch(FIPAException e)
-		{
+		}catch(FIPAException e){
 			e.printStackTrace();
 		}
-		
 		addBehaviour(new TickerWaiter(this));
-		
 	}
 	
 	
-	protected void takedown()
-	{
-		//Deregister from yellow pages
-		try
-		{
+	protected void takedown(){
+		try{
 			DFService.deregister(this);
-		}
-		catch (FIPAException e)
-		{
+		}catch (FIPAException e){
 			e.printStackTrace();
 		}
 	}
 	
 	
-	public class TickerWaiter extends CyclicBehaviour
-	{
-		public TickerWaiter(Agent a)
-		{
+	public class TickerWaiter extends CyclicBehaviour{
+		public TickerWaiter(Agent a){
 			super(a);
 		}
 		
 		@Override
-		public void action()
-		{
-			MessageTemplate mt = MessageTemplate.or(MessageTemplate.MatchContent("new day"),
+		public void action(){
+			MessageTemplate mt = MessageTemplate.or(MessageTemplate.MatchContent("NewDay"),
 					MessageTemplate.MatchContent("terminate"));
 			ACLMessage msg = myAgent.receive(mt);
-			if(msg != null)
-			{
-				if(tickerAgent == null)
-				{
+			if(msg != null)	{
+				if(tickerAgent == null)	{
 					tickerAgent = msg.getSender();
 				}
-				if(msg.getContent().equals("new day"))
-				{
-					day++;
-					/*
-					 * Add customer behaviours here
-					 */
+				if(msg.getContent().equals("NewDay")){
+					cyclicBehaviours.clear();
 					myAgent.addBehaviour(new GetStock());
 					doWait(5000);
-					System.out.println("Components: " + itemsForSale);
-					CyclicBehaviour ol = new OwnsListener();
-					myAgent.addBehaviour(ol);
-					CyclicBehaviour sl = new SellListener();
-					myAgent.addBehaviour(sl);
-					ArrayList<Behaviour> cyclicBehaviours = new ArrayList<>();
-					cyclicBehaviours.add(ol);
-					cyclicBehaviours.add(sl);
+					//System.out.println("Components: " + supplierStock);
+					CyclicBehaviour getRequestM = new GetRequestFromManufacture();
+					CyclicBehaviour sellToManu = new SellingItemsToManufactures();
+					
+					myAgent.addBehaviour(getRequestM);
+					myAgent.addBehaviour(sellToManu);
+					
+					cyclicBehaviours.add(getRequestM);
+					cyclicBehaviours.add(sellToManu);
 					myAgent.addBehaviour(new EndDayListener(myAgent, cyclicBehaviours));
 					
-				}
-				else
-				{
-					//termination message to end simulation
+					day++;
+				}else{
 					myAgent.doDelete();
 				}
-			}
-			else
-			{
+			}else{
 				block();
 			}
 		}
@@ -176,77 +149,74 @@ public class SupplierAgent extends Agent
 			 * 
 			 * */
 			
-			itemsForSale.clear();
+			supplierStock.clear();
 
-			if (getAID().getName().contains("supplier1")) {
+			if (getAID().getName().contains("Supplier_1")) {
 				Screen screen = new Screen();
 				screen.setSize(5);
 				screen.setItemID(1);
-				itemsForSale.put(screen.getItemID(), 100);
+				supplierStock.put(screen.getItemID(), 100);
 				Screen screen2 = new Screen();
 				screen2.setSize(7);
 				screen2.setItemID(2);
-				itemsForSale.put(screen2.getItemID(), 150);
+				supplierStock.put(screen2.getItemID(), 150);
 				
 				Storage storage = new Storage();
 				storage.setSize(64);
 				storage.setItemID(3);
-				itemsForSale.put(storage.getItemID(), 25);
+				supplierStock.put(storage.getItemID(), 25);
 				Storage storage2 = new Storage();
 				storage2.setSize(256);
 				storage2.setItemID(4);
-				itemsForSale.put(storage2.getItemID(), 50);
+				supplierStock.put(storage2.getItemID(), 50);
 				
 				Memory memory = new Memory();
 				memory.setSize(4);
 				memory.setItemID(5);
-				itemsForSale.put(memory.getItemID(),30);
+				supplierStock.put(memory.getItemID(),30);
 				Memory memory2 = new Memory();
 				memory2.setSize(8);
 				memory2.setItemID(6);
-				itemsForSale.put(memory2.getItemID(),60);
+				supplierStock.put(memory2.getItemID(),60);
 				
 				Battery battery = new Battery();
 				battery.setSize(2000);
 				battery.setItemID(7);
-				itemsForSale.put(battery.getItemID(),70);
+				supplierStock.put(battery.getItemID(),70);
 				Battery battery2 = new Battery();
 				battery2.setSize(3000);
 				battery2.setItemID(8);
-				itemsForSale.put(battery2.getItemID(),100);
+				supplierStock.put(battery2.getItemID(),100);
 				
-				deliverySpeed = 1;
-				System.out.println("Product assigned to Supplier1");
+				shipmentSpeed = 1;
+				//System.out.println("Product assigned to Supplier1");
 				//System.out.println(components);
 			} else {
 				Storage storage = new Storage();
 				storage.setSize(64);
 				storage.setItemID(3);
-				itemsForSale.put(storage.getItemID(), 15);
+				supplierStock.put(storage.getItemID(), 15);
 				Storage storage2 = new Storage();
 				storage2.setSize(256);
 				storage2.setItemID(4);
-				itemsForSale.put(storage2.getItemID(), 40);
+				supplierStock.put(storage2.getItemID(), 40);
 				
 				Memory memory = new Memory();
 				memory.setSize(4);
 				memory.setItemID(5);
-				itemsForSale.put(memory.getItemID(),20);
+				supplierStock.put(memory.getItemID(),20);
 				Memory memory2 = new Memory();
 				memory2.setSize(8);
 				memory2.setItemID(6);
-				itemsForSale.put(memory2.getItemID(),35);
+				supplierStock.put(memory2.getItemID(),35);
 
-				deliverySpeed = 4;
-				System.out.println("Product assigned to Supplier2");
+				shipmentSpeed = 4;
+				//System.out.println("Product assigned to Supplier2");
 			}
-				
-		}
-		
+		}	
 	}
 	
-	
-	public class OwnsListener extends CyclicBehaviour
+	public class GetRequestFromManufacture extends CyclicBehaviour
 	{
 
 		@Override
@@ -254,42 +224,35 @@ public class SupplierAgent extends Agent
 		{
 			MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.QUERY_IF);
 			ACLMessage msg = myAgent.receive(mt);
-			if(msg != null)
-			{
-				try
-				{
+			if(msg != null){
+				try	{
 					ContentElement ce  = null;
 					
 					ce = getContentManager().extractContent(msg);
-					if (ce instanceof Buy)
-					{
-						Buy owns = (Buy) ce;
-						Item comp = owns.getItem();
+					if (ce instanceof Buy){
+						Buy buy = (Buy) ce;
+						Item comp = buy.getItem();
 						
-						Buy owner = new Buy();
-						System.out.println("Get Item id: " + owns.getItem().getItemID());
-						ACLMessage reply = new ACLMessage(ACLMessage.CFP);
-						reply.addReceiver(msg.getSender());
-						reply.setLanguage(codec.getName());
-						reply.setOntology(ontology.getName());
+						Buy buying = new Buy();
+						//System.out.println("Get Item id: " + buy.getItem().getItemID());
+						ACLMessage answerToManu = new ACLMessage(ACLMessage.CFP);
+						answerToManu.setLanguage(codec.getName());
+						answerToManu.setOntology(ontology.getName());
+						answerToManu.addReceiver(msg.getSender());
+
 						
-						if(itemsForSale.containsKey(comp.getItemID()))
-						{
-							owner.setItem(comp);
-							owner.setOwner(getAID());
-							owner.setPrice(itemsForSale.get(comp.getItemID()));
-							owner.setShipmentSpeed(deliverySpeed);
+						if(supplierStock.containsKey(comp.getItemID())){
+							buying.setItem(comp);
+							buying.setOwner(getAID());
+							buying.setPrice(supplierStock.get(comp.getItemID()));
+							buying.setShipmentSpeed(shipmentSpeed);
 							
-							getContentManager().fillContent(reply, owner);
-							send(reply);
-							
-							
-						}
-						else
-						{
+							getContentManager().fillContent(answerToManu, buying);
+							send(answerToManu);
+						}else{
 							ACLMessage refuse = new ACLMessage(ACLMessage.REFUSE);
+							refuse.setContent("Item Not Selled");
 							refuse.addReceiver(msg.getSender());
-							refuse.setContent("We do not sell that item");
 							send(refuse);
 						}
 					}
@@ -301,57 +264,45 @@ public class SupplierAgent extends Agent
 					oe.printStackTrace();
 				}
 			}
-			else
-			{
+			else{
 				block();
 			}
 		}
-		
 	}
 	
-	
-	public class SellListener extends CyclicBehaviour
-	{
+	public class SellingItemsToManufactures extends CyclicBehaviour{
 
 		@Override
-		public void action() 
-		{
+		public void action(){
 			MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.PROPOSE);
 			ACLMessage msg = myAgent.receive(mt);
 			
-			if(msg != null)
-			{
-				try
-				{
+			if(msg != null){
+				try	{
 					ContentElement ce  = null;
 					
 					ce = getContentManager().extractContent(msg);
-					if(ce instanceof Action)
-					{
+					if(ce instanceof Action){
 						Concept action = ((Action)ce).getAction();
-						if(action instanceof Sell)
-						{
+						if(action instanceof Sell){
 							Sell sell = (Sell)action;
 							
-							if(itemsForSale.containsKey(sell.getItem().getItemID()))
-							{
-								ACLMessage reply = new ACLMessage(ACLMessage.INFORM);
-								reply.addReceiver(sell.getBuyer());
-								reply.setLanguage(codec.getName());
-								reply.setOntology(ontology.getName());
+							if(supplierStock.containsKey(sell.getItem().getItemID())){
+								ACLMessage answerToManu = new ACLMessage(ACLMessage.INFORM);
+								answerToManu.setLanguage(codec.getName());
+								answerToManu.setOntology(ontology.getName());
+								answerToManu.addReceiver(sell.getBuyer());
 								
-								sell.setDeliveryDate(deliverySpeed+day);
-								sell.setPrice(itemsForSale.get(sell.getItem().getItemID()) * sell.getQuantity());
+								sell.setDeliveryDate(day + shipmentSpeed);
+								sell.setPrice(supplierStock.get(sell.getItem().getItemID()) * sell.getQuantity());
 								
 								Action myReply = new Action();
 								myReply.setAction(sell);
 								myReply.setActor(getAID());
 								
-								getContentManager().fillContent(reply, myReply);
-								send(reply);
-							}
-							else
-							{
+								getContentManager().fillContent(answerToManu, myReply);
+								send(answerToManu);
+							}else{
 								ACLMessage fail = new ACLMessage(ACLMessage.FAILURE);
 								fail.addReceiver(sell.getBuyer());
 								myAgent.send(fail);
@@ -359,17 +310,13 @@ public class SupplierAgent extends Agent
 						}
 					}
 				}
-				catch (CodecException ce) 
-				{
+				catch (CodecException ce){
 					ce.printStackTrace();
-				}
-				catch (OntologyException oe) 
-				{
+				}catch (OntologyException oe) {
 					oe.printStackTrace();
 				}
 			}
-		}
-		
+		}	
 	}
 	
 	
@@ -377,21 +324,17 @@ public class SupplierAgent extends Agent
 	{
 		private List<Behaviour> toRemove;
 		
-		public EndDayListener(Agent a, List<Behaviour> toRemove)
-		{
+		public EndDayListener(Agent a, List<Behaviour> toRemove){
 			super(a);
 			this.toRemove = toRemove;
 		}
 		
 		@Override
-		public void action()
-		{
+		public void action(){
 			MessageTemplate mt = MessageTemplate.MatchContent("done");
 			ACLMessage msg = myAgent.receive(mt);
-			if(msg != null)
-			{
-				
-				if(msg.getSender().equals(manufacturer))
+			if(msg != null){
+				if(msg.getSender().equals(manufacturerAgent))
 				{
 					//we are finished
 					ACLMessage tick = new ACLMessage(ACLMessage.INFORM);
@@ -400,15 +343,13 @@ public class SupplierAgent extends Agent
 					myAgent.send(tick);
 					
 					//remove behaviours
-					for(Behaviour b : toRemove)
-					{
+					for(Behaviour b : toRemove)	{
 						myAgent.removeBehaviour(b);
 					}
 					myAgent.removeBehaviour(this);
 				}
 			}
-			else
-			{
+			else{
 				block();
 			}
 		}

@@ -10,7 +10,7 @@ public class TryThings {
 
 	public static void main(String[] args) {
 		
-		___Comparator compare = new ___Comparator();
+		Comparator compare = new Comparator();
 		
 		String aa = "suppli1asdfasdfasdfasdfasdf";
 		
