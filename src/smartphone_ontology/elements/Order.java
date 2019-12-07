@@ -12,6 +12,7 @@ public class Order implements AgentAction{
 	private int quantity;
 	private int delayFee;
 	private int dueDate;
+	private int assemblyDay;
 	
 	
 	public Long getOrderID() {
@@ -68,6 +69,14 @@ public class Order implements AgentAction{
 	
 	public void setSmartphone(Smartphone smartphone) {
 		this.smartphone = smartphone;
+	}
+
+	public int getAssemblyDay() {
+		return assemblyDay;
+	}
+
+	public void setAssemblyDay(int assemblyDay) {
+		this.assemblyDay = assemblyDay;
 	}
 	
 }

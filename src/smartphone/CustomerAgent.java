@@ -42,6 +42,7 @@ public class CustomerAgent extends Agent
 	private AID tickerAgent;
 	private AID manufacturerAgent;
 	private ArrayList<Long> workingOrders = new ArrayList<>();
+	private int day = 1;
 	
 	@Override
 	protected void setup()
@@ -227,7 +228,7 @@ public class CustomerAgent extends Agent
 			order.setSmartphone(smartphone);
 			order.setQuantity(quantity);
 			order.setPrice(price);
-			order.setDueDate(deliveryDue);
+			order.setDueDate(deliveryDue + day);
 			order.setDelayFee(penaltyDelay);
 			order.setOrderID(Math.abs(rand.nextLong()));
 			System.out.println("Order--> Quantity: " + order.getQuantity() + ", Screen: " + screen.getSize() +"\", Storage: " + storage.getSize() + "Gb, Memory: " 
@@ -290,6 +291,9 @@ public class CustomerAgent extends Agent
 		int orderPrice;
 		
 		public void action(){
+			
+			System.out.println("Inside GetOrders at Customer");
+			
 			MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.CONFIRM);
 			ACLMessage msgGetOrders = myAgent.receive(mt);
 			if(msgGetOrders != null)	{
@@ -357,7 +361,7 @@ public class CustomerAgent extends Agent
 					tick.setContent("done");
 					tick.addReceiver(tickerAgent);
 					myAgent.send(tick);
-					
+					day++;
 					for(Behaviour behaviour : cyclicB){
 						myAgent.removeBehaviour(behaviour);
 					}

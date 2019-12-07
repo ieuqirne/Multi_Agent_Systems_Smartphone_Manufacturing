@@ -107,15 +107,15 @@ public class SupplierAgent extends Agent
 				if(msg.getContent().equals("NewDay")){
 					cyclicBehaviours.clear();
 					myAgent.addBehaviour(new GetStock());
-					doWait(5000);
+					//doWait(5000);
 					//System.out.println("Components: " + supplierStock);
-					CyclicBehaviour getRequestM = new GetRequestFromManufacture();
+					//CyclicBehaviour getRequestM = new GetRequestFromManufacture();
 					CyclicBehaviour sellToManu = new SellingItemsToManufactures();
 					
-					myAgent.addBehaviour(getRequestM);
+					//myAgent.addBehaviour(getRequestM);
 					myAgent.addBehaviour(sellToManu);
 					
-					cyclicBehaviours.add(getRequestM);
+					//cyclicBehaviours.add(getRequestM);
 					cyclicBehaviours.add(sellToManu);
 					myAgent.addBehaviour(new EndDayListener(myAgent, cyclicBehaviours));
 					
@@ -225,6 +225,8 @@ public class SupplierAgent extends Agent
 			MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.QUERY_IF);
 			ACLMessage msg = myAgent.receive(mt);
 			if(msg != null){
+				//System.out.println("Inside GetRequestFromManufacture at Supplier");
+				//System.out.println(msg);
 				try	{
 					ContentElement ce  = null;
 					
@@ -274,9 +276,12 @@ public class SupplierAgent extends Agent
 
 		@Override
 		public void action(){
+			//System.out.println("Inside SellingItemsToManufactures at Supplier");
+			
 			MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.PROPOSE);
 			ACLMessage msg = myAgent.receive(mt);
-			
+			//System.out.println(msg);
+			//doWait(5000);
 			if(msg != null){
 				try	{
 					ContentElement ce  = null;
@@ -286,7 +291,7 @@ public class SupplierAgent extends Agent
 						Concept action = ((Action)ce).getAction();
 						if(action instanceof Sell){
 							Sell sell = (Sell)action;
-							
+							System.out.println("Item Id in Supplier Agent From Manufa: \n" + sell.getItem().getItemID());
 							if(supplierStock.containsKey(sell.getItem().getItemID())){
 								ACLMessage answerToManu = new ACLMessage(ACLMessage.INFORM);
 								answerToManu.setLanguage(codec.getName());
@@ -299,7 +304,7 @@ public class SupplierAgent extends Agent
 								Action myReply = new Action();
 								myReply.setAction(sell);
 								myReply.setActor(getAID());
-								
+								System.out.println("Reply: \n" + myReply);
 								getContentManager().fillContent(answerToManu, myReply);
 								send(answerToManu);
 							}else{

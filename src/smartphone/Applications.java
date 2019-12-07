@@ -44,6 +44,16 @@ public class Applications {
 
 			AgentController customer3 = myContainer.createNewAgent("Customer_3", CustomerAgent.class.getCanonicalName(), null);
 			customer3.start();
+			/*AgentController customer4 = myContainer.createNewAgent("Customer_4", CustomerAgent.class.getCanonicalName(), null);
+			customer4.start();
+			AgentController customer5 = myContainer.createNewAgent("Customer_5", CustomerAgent.class.getCanonicalName(), null);
+			customer5.start();
+			AgentController customer6 = myContainer.createNewAgent("Customer_6", CustomerAgent.class.getCanonicalName(), null);
+			customer6.start();
+			AgentController customer7 = myContainer.createNewAgent("Customer_7", CustomerAgent.class.getCanonicalName(), null);
+			customer7.start();
+			AgentController customer8 = myContainer.createNewAgent("Customer_8", CustomerAgent.class.getCanonicalName(), null);
+			customer8.start();*/
 			
 		}
 		catch (Exception e)
